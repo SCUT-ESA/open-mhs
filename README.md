@@ -156,7 +156,7 @@ mhs serve --mode http
 ## Writing a Custom Driver
 
 ```python
-from openmhs.core.device import BaseDevice, DeviceCapability, DeviceMetadata
+from openmhs.core.device import BaseDevice, DeviceCapability, DeviceMetadata, DeviceState
 from openmhs.core.driver import Driver, DriverConfig, register_driver
 
 class MyDevice(BaseDevice):
