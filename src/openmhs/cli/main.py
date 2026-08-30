@@ -20,7 +20,7 @@ from typing import Any
 from rich.console import Console
 from rich.table import Table
 
-from openmhs.adapters.oscilloscope.discovery import OscilloscopeDiscoveryManager
+from openmhs.adapters.visa.discovery import VisaDiscoveryManager
 from openmhs.core.device import DeviceState
 from openmhs.core.driver import DriverConfig
 from openmhs.core.protocol import Command, CommandType, MHSProtocol
@@ -174,18 +174,17 @@ async def serve_mcp(
     registry: DeviceRegistry,
     mode: str = "stdio",
     discovery_interval: float = 5.0,
-    discovery_manager: OscilloscopeDiscoveryManager | None = None,
+    discovery_manager: VisaDiscoveryManager | None = None,
 ) -> None:
     """Start the selected server with one shared registry/manager graph."""
     from openmhs.mcp.server import MHSMcpServer
 
-    manager = discovery_manager
+    manager = discovery_manager or VisaDiscoveryManager(registry, interval=discovery_interval)
+    server = MHSMcpServer(registry, discovery_manager=manager)
     if mode == "stdio":
-        manager = manager or OscilloscopeDiscoveryManager(registry, interval=discovery_interval)
-        server = MHSMcpServer(registry, discovery_manager=manager)
         await server.run_stdio()
     else:
-        await MHSMcpServer(registry).run_http()
+        await server.run_http()
 
 
 async def serve_api(registry: DeviceRegistry, host: str = "0.0.0.0", port: int = 8000) -> None:
@@ -266,7 +265,7 @@ async def main() -> int:
     registry = DeviceRegistry()
 
     if args.command == "discover":
-        manager = OscilloscopeDiscoveryManager(registry, interval=args.discovery_interval)
+        manager = VisaDiscoveryManager(registry, interval=args.discovery_interval)
         try:
             result = await manager.scan_once()
             for issue in result.errors:
@@ -285,7 +284,7 @@ async def main() -> int:
     elif args.command == "serve":
         manager = None
         if args.mode == "stdio":
-            manager = OscilloscopeDiscoveryManager(
+            manager = VisaDiscoveryManager(
                 registry, interval=args.discovery_interval
             )
         await serve_mcp(registry, args.mode, args.discovery_interval, manager)

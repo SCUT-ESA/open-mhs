@@ -125,3 +125,102 @@ async def test_modern_subscription_receives_catalog_change() -> None:
         await server._on_catalog_changed()
         event = await subscription.__anext__()
         assert event.__class__.__name__ == "ToolsListChanged"
+
+
+@pytest.mark.asyncio
+async def test_waveform_generator_capabilities_are_dynamic_tools() -> None:
+    class Generator:
+        def __init__(self) -> None:
+            self.metadata = DeviceMetadata(
+                device_id="wavegen-a1", device_type="waveform_generator",
+                manufacturer="UNI-T", model="UTG2062X",
+                capabilities=[
+                    DeviceCapability("identify", read_only=True),
+                    DeviceCapability("output_state", parameters={"channel": {"type": "integer"}}, read_only=True),
+                    DeviceCapability("output", parameters={"channel": {"type": "integer"}, "enabled": {"type": "boolean"}}),
+                    DeviceCapability("waveform", parameters={"channel": {"type": "integer"}, "waveform": {"type": "string"}}),
+                    DeviceCapability("amplitude", parameters={"channel": {"type": "integer"}, "amplitude": {"type": "number"}}),
+                ],
+            )
+            self.state = DeviceState.ONLINE
+            self.calls = []
+
+        async def read(self, capability, **params):
+            self.calls.append(("read", capability, params))
+            return {"ok": True}
+
+        async def write(self, capability, **params):
+            self.calls.append(("write", capability, params))
+            return {"ok": True}
+
+    registry = DeviceRegistry()
+    generator = Generator()
+    await registry.register(generator)
+    server = MHSMcpServer(registry)
+    tools = await server.list_tools()
+    names = {tool["name"] for tool in tools}
+    assert "mhs_wavegen-a1_identify" in names
+    assert "mhs_wavegen-a1_output_state" in names
+    assert "mhs_wavegen-a1_output" in names
+    assert "mhs_wavegen-a1_waveform" in names
+    assert "mhs_wavegen-a1_amplitude" in names
+    output_schema = next(tool["inputSchema"] for tool in tools if tool["name"].endswith("_output"))
+    assert output_schema["required"] == ["channel", "enabled"]
+    await server._call_tool_result("mhs_wavegen-a1_output", {"channel": 2, "enabled": True})
+    await server._call_tool_result("mhs_wavegen-a1_output_state", {"channel": 2})
+    assert generator.calls == [("write", "output", {"channel": 2, "enabled": True}), ("read", "output_state", {"channel": 2})]
+
+
+@pytest.mark.asyncio
+async def test_oscilloscope_display_capabilities_are_dynamic_tools() -> None:
+    from openmhs.adapters.oscilloscope import OscilloscopeDevice
+
+    class Instrument:
+        def __init__(self):
+            self.queries = []
+            self.writes = []
+            self.closed = 0
+            self.timeout = None
+
+        def query(self, command):
+            self.queries.append(command)
+            return "UNI-T,UPO6102N,SN,1.0" if command == "*IDN?" else "ON"
+
+        def write(self, command):
+            self.writes.append(command)
+
+        def close(self):
+            self.closed += 1
+
+    class Manager:
+        def __init__(self, instrument):
+            self.instrument = instrument
+
+        def open_resource(self, resource):
+            return self.instrument
+
+    instrument = Instrument()
+    device = OscilloscopeDevice("scope-001", "USB::SCOPE::INSTR", lambda: Manager(instrument))
+    assert await device.connect()
+
+    registry = DeviceRegistry()
+    await registry.register(device)
+    server = MHSMcpServer(registry)
+
+    tools = await server.list_tools()
+    names = {tool["name"] for tool in tools}
+    assert "mhs_scope-001_channel_display" in names
+    assert "mhs_scope-001_channel_display_state" in names
+
+    display_schema = next(tool["inputSchema"] for tool in tools if tool["name"] == "mhs_scope-001_channel_display")
+    assert display_schema["required"] == ["channel", "enabled"]
+
+    text, is_error = await server._call_tool_result("mhs_scope-001_channel_display", {"channel": 1, "enabled": False})
+    assert not is_error
+    assert json.loads(text) == {"channel": 1, "enabled": False}
+    assert instrument.writes == [":CHANnel1:DISPlay OFF"]
+
+    text, is_error = await server._call_tool_result("mhs_scope-001_channel_display_state", {"channel": 1})
+    assert not is_error
+    assert json.loads(text) == {"channel": 1, "enabled": True}
+    assert instrument.queries == ["*IDN?", ":CHANnel1:DISPlay?"]

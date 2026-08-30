@@ -252,20 +252,26 @@ class MHSMcpServer:
             await self._subscription_bus.publish(ToolsListChanged())
 
     @asynccontextmanager
-    async def _lifespan(self, _server: Any) -> AsyncIterator[dict[str, Any]]:
+    async def _discovery_lifespan(self) -> AsyncIterator[None]:
+        """Share discovery startup and cleanup across MCP transports."""
         if self.discovery_manager is not None:
             self.discovery_manager.start()
         try:
-            yield {}
+            yield
         finally:
             if self._listen_handler is not None:
                 self._listen_handler.close()
+            self._legacy_sessions.clear()
             if self.discovery_manager is not None:
                 await self.discovery_manager.close()
             if self._remove_discovery_listener is not None:
                 self._remove_discovery_listener()
                 self._remove_discovery_listener = None
-            self._legacy_sessions.clear()
+
+    @asynccontextmanager
+    async def _lifespan(self, _server: Any) -> AsyncIterator[dict[str, Any]]:
+        async with self._discovery_lifespan():
+            yield {}
 
     async def run_stdio(self) -> None:
         """Run the low-level MCP server over stdio."""
@@ -297,12 +303,16 @@ class MHSMcpServer:
         app.router.add_get("/tools", tools_handler)
         app.router.add_post("/call", call_handler)
         runner = web.AppRunner(app)
-        await runner.setup()
-        site = web.TCPSite(runner, host, port)
-        await site.start()
-        print(f"MHS MCP HTTP server running on http://{host}:{port}")
-        while True:
-            await asyncio.sleep(3600)
+        try:
+            await runner.setup()
+            site = web.TCPSite(runner, host, port)
+            async with self._discovery_lifespan():
+                await site.start()
+                print(f"MHS MCP HTTP server running on http://{host}:{port}")
+                while True:
+                    await asyncio.sleep(3600)
+        finally:
+            await runner.cleanup()
 
 
 __all__ = ["HAS_MCP", "MHSMcpServer"]

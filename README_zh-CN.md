@@ -32,7 +32,7 @@ Open MHS 让各类 AI Agent（如 Claude、GPT、Cursor、Cline 等）能够通�
 
 | 分类 | 设备 / 模块 | 状态 |
 |---|---|---|
-| **实验室仪器** | 示波器（UNI-T UPO6102N，基于 PyVISA/USB）、显微镜、激光发生器、移液机 | ✅ 就绪 |
+| **实验室仪器** | 示波器（UNI-T UPO6102N，基于 PyVISA/USB）、波形发生器（UNI-T UTG2062X）、显微镜、激光发生器、移液机 | ✅ 就绪 |
 | **传感器** | 温湿度（BME280）、超声波测距（HC-SR04）、光照、气体、IMU | ✅ 就绪 |
 | **视觉与摄像头** | USB 摄像头、IP 网络摄像头、树莓派摄像头（Pi Camera） | ✅ 就绪 |
 | **嵌入式与主控** | 树莓派 GPIO、Arduino（串口通信） | ✅ 就绪 |
@@ -56,13 +56,24 @@ cd open-mhs
 
 # 2. 安装依赖（包含 MCP 与示波器支持）
 # 方式 A：使用 uv（推荐）
-uv sync --extra mcp --extra oscilloscope
+uv sync --extra mcp --extra visa
 
 # 方式 B：使用 pip
-pip install -e ".[mcp,oscilloscope]"
+pip install -e ".[mcp,visa]"
+
+# 旧的示波器 extra 仍然兼容：
+# uv sync --extra mcp --extra oscilloscope
+# pip install -e ".[mcp,oscilloscope]"
+# 也可以只安装波形发生器支持：
+# uv sync --extra waveform_generator
+# pip install -e ".[waveform_generator]"
 ```
 
 > **注意（VISA 驱动环境）**：操作真实示波器或仪器时，请确保系统已安装 VISA 运行时（如 NI-VISA，或安装 `pip install pyvisa-py`）。
+
+VISA 自动发现支持 UNI-T UPO6102N 示波器，以及 UTG2000X 系列中的 UNI-T UTG2062X 波形发生器。发现和连接阶段只发送 `*IDN?`，不会启用输出，也不会改变波形或幅度。发生器提供 `identify`、`output_state`、`output`、`waveform` 和 `amplitude` 能力；通道参数必须是整数 1 或 2，写工具必须明确提供 `channel`，读工具省略时默认通道 1。示波器也提供同样通道规则的 `measure_frequency`。`amplitude` 使用仪器当前配置的电压单位，允许范围取决于负载和仪器配置。动态工具名格式为 `mhs_<device_id>_<capability>`（例如 `mhs_wavegen-<hash>_output`）。
+
+真实 USB 测试默认关闭且只读：只能枚举资源、查询 `*IDN?` 和执行只读查询。不要把 `examples/oscilloscope.py` 中包含写操作的示例当作 UTG 安全验证流程。
 
 ---
 
@@ -143,8 +154,8 @@ Open MHS 会自动将已连接的硬件包装为标准 MCP 工具并对外提供
 > **用户**：*"帮我通过示波器测量一下通道 1 的峰峰值电压。"*
 
 #### Agent 执行流程：
-1. **设备发现**：Agent 调用 `mcp_discover_devices` 工具，获取当前在线设备 `scope-d1dbfccf30e6`（UNI-T UPO6102N）。
-2. **工具调用**：Agent 自动调用 `mcp_scope-d1dbfccf30e6_measure_vpp(channel=1)` 发送测量指令。
+1. **设备发现**：Agent 调用 `mhs_discover_devices` 工具，获取当前在线设备 `scope-d1dbfccf30e6`（UNI-T UPO6102N）。
+2. **工具调用**：Agent 自动调用 `mhs_scope-d1dbfccf30e6_measure_vpp(channel=1)` 发送测量指令。
 3. **Agent 输出结果**：
    > *"已通过示波器（UNI-T UPO6102N）完成测量，通道 1 当前的峰峰值电压（$V_{pp}$）为 **0.02 V**（即 **20 mV**）。"*
 
