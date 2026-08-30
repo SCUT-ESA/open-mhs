@@ -36,7 +36,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-mcp = ["mcp>=1.0"]
+mcp = ["mcp>=2.1,<2.2"]
 api = ["fastapi>=0.100", "uvicorn>=0.23"]
 # pi = ["gpiozero", "picamera2; platform_machine=='aarch64' or platform_machine=='armv7l'"]
 arduino = ["pyserial>=3.5"]
@@ -55,8 +55,8 @@ dev = [
 ]
 
 [project.scripts]
-openmhs = "openmhs.cli.main:main"
-mhs = "openmhs.cli.main:main"
+openmhs = "openmhs.cli.main:main_sync"
+mhs = "openmhs.cli.main:main_sync"
 
 [project.urls]
 Homepage = "https://github.com/tongriyaotxt/open-mhs"

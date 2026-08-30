@@ -1,0 +1,14 @@
+{
+  "mcpServers": {
+    "openmhs": {
+      "command": "uv",
+      "args": [
+        "run",
+        "mhs",
+        "serve",
+        "--mode",
+        "stdio"
+      ]
+    }
+  }
+}
