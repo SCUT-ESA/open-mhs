@@ -59,10 +59,10 @@ openmhs = "openmhs.cli.main:main_sync"
 mhs = "openmhs.cli.main:main_sync"
 
 [project.urls]
-Homepage = "https://github.com/tongriyaotxt/open-mhs"
-Documentation = "https://github.com/tongriyaotxt/open-mhs#readme"
-Repository = "https://github.com/tongriyaotxt/open-mhs"
-Issues = "https://github.com/tongriyaotxt/open-mhs/issues"
+Homepage = "https://github.com/SCUT-ESA/open-mhs"
+Documentation = "https://github.com/SCUT-ESA/open-mhs#readme"
+Repository = "https://github.com/SCUT-ESA/open-mhs"
+Issues = "https://github.com/SCUT-ESA/open-mhs/issues"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/openmhs"]
