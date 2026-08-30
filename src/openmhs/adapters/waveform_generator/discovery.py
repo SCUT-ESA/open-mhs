@@ -1,14 +1,12 @@
-"""Backward-compatible oscilloscope-only VISA discovery wrapper."""
+"""Compatibility wrapper for waveform-generator-only discovery."""
 
 from __future__ import annotations
 
 from collections.abc import Callable
 from typing import Any
 
-from openmhs.adapters.oscilloscope import OscilloscopeDriver
 from openmhs.adapters.visa.discovery import (
-    DiscoveredDevice,
-    DiscoveredOscilloscope,
+    DiscoveredWaveformGenerator,
     DiscoveryIssue,
     DiscoveryState,
     ProbeSnapshot,
@@ -16,14 +14,15 @@ from openmhs.adapters.visa.discovery import (
     ScanResult,
     VisaDeviceSpec,
     VisaDiscoveryManager,
-    matches_upo6102n,
+    matches_utg2062x,
 )
+from openmhs.adapters.waveform_generator import WaveformGeneratorDriver
 from openmhs.core.driver import Driver, DriverConfig
 from openmhs.core.registry import DeviceRegistry
 
 
-class OscilloscopeDiscoveryManager(VisaDiscoveryManager):
-    """Compatibility facade that discovers only UNI-T UPO6102N scopes."""
+class WaveformGeneratorDiscoveryManager(VisaDiscoveryManager):
+    """Discover only UNI-T UTG2062X generators."""
 
     def __init__(
         self,
@@ -34,10 +33,15 @@ class OscilloscopeDiscoveryManager(VisaDiscoveryManager):
         discovery_interval: float | None = None,
         poll_interval: float | None = None,
     ) -> None:
-        factory = driver_factory or OscilloscopeDriver
+        factory = driver_factory or WaveformGeneratorDriver
         spec = VisaDeviceSpec(
-            "oscilloscope", "oscilloscope", "oscilloscope",
-            matches_upo6102n, factory, "scope", DiscoveredOscilloscope,
+            "waveform_generator",
+            "waveform_generator",
+            "waveform_generator",
+            matches_utg2062x,
+            factory,
+            "wavegen",
+            DiscoveredWaveformGenerator,
         )
         super().__init__(
             registry,
@@ -49,7 +53,13 @@ class OscilloscopeDiscoveryManager(VisaDiscoveryManager):
         )
 
 
+
 __all__ = [
-    "DiscoveredDevice", "DiscoveredOscilloscope", "DiscoveryIssue", "DiscoveryState",
-    "OscilloscopeDiscoveryManager", "ProbeSnapshot", "ResourceObservation", "ScanResult",
+    "DiscoveredWaveformGenerator",
+    "DiscoveryIssue",
+    "DiscoveryState",
+    "ProbeSnapshot",
+    "ResourceObservation",
+    "ScanResult",
+    "WaveformGeneratorDiscoveryManager",
 ]

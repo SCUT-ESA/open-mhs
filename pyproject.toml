@@ -42,7 +42,9 @@ api = ["fastapi>=0.100", "uvicorn>=0.23"]
 arduino = ["pyserial>=3.5"]
 camera = ["opencv-python>=4.8", "Pillow>=10.0"]
 sensors = ["smbus2>=0.4"]
+visa = ["pyvisa>=1.14"]
 oscilloscope = ["pyvisa>=1.14"]
+waveform_generator = ["pyvisa>=1.14"]
 
 dev = [
     "pytest>=7.0",

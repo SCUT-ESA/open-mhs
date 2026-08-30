@@ -32,7 +32,7 @@ MHS enables AI agents to **discover, monitor, and safely operate physical device
 
 | Category | Devices | Status |
 |---|---|---|
-| **Lab Equipment** | Oscilloscopes (UNI-T UPO6102N via VISA/USB), Microscopes, Lasers, Liquid Handlers | ✅ Ready |
+| **Lab Equipment** | Oscilloscopes (UNI-T UPO6102N via VISA/USB), Waveform Generators (UNI-T UTG2062X), Microscopes, Lasers, Liquid Handlers | ✅ Ready |
 | **Sensors** | Temperature, Humidity (BME280), Distance (HC-SR04), Light, Gas, IMU | ✅ Ready |
 | **Cameras** | USB Webcam, IP Camera, Raspberry Pi Camera | ✅ Ready |
 | **Embedded** | Raspberry Pi GPIO, Arduino (Serial) | ✅ Ready |
@@ -55,13 +55,24 @@ git clone https://github.com/SCUT-ESA/open-mhs.git
 cd open-mhs
 
 # Option A: With uv (Recommended)
-uv sync --extra mcp --extra oscilloscope
+uv sync --extra mcp --extra visa
 
 # Option B: With pip
-pip install -e ".[mcp,oscilloscope]"
+pip install -e ".[mcp,visa]"
+
+# The legacy oscilloscope extra remains supported:
+# uv sync --extra mcp --extra oscilloscope
+# pip install -e ".[mcp,oscilloscope]"
+# Or install only generator support:
+# uv sync --extra waveform_generator
+# pip install -e ".[waveform_generator]"
 ```
 
 > **Note for VISA Instruments**: Ensure you have NI-VISA or a compatible VISA library installed (or `pip install pyvisa-py`).
+
+VISA discovery supports UNI-T UPO6102N oscilloscopes and the UNI-T UTG2062X in the UTG2000X waveform-generator series. Discovery and connection send only `*IDN?`; they never enable output or change waveform/amplitude. The generator exposes `identify`, `output_state`, `output`, `waveform`, and `amplitude` tools. Output channels are integers 1 or 2; write tools require `channel` explicitly, while read tools default to channel 1 when omitted. The oscilloscope also exposes `measure_frequency` with the same channel schema. `amplitude` uses the instrument's current voltage unit and its permitted range depends on load and instrument configuration. The dynamic names are `mhs_<device_id>_<capability>` (for example, `mhs_wavegen-<hash>_output`).
+
+Real USB tests are opt-in and read-only: they may enumerate resources, query `*IDN?`, and run read queries only. Do not use the write examples in `examples/oscilloscope.py` as UTG safety verification.
 
 ---
 
@@ -142,8 +153,8 @@ Once the MCP server is configured, open your agent (Claude Code, Claude Desktop,
 > **User**: *"Help me check the oscilloscope identity and measure the peak-to-peak voltage ($V_{pp}$) on channel 1."*
 
 #### Agent Flow:
-1. **Agent Tool Discovery**: The agent calls `mcp_discover_devices` and finds `scope-d1dbfccf30e6` (UNI-T UPO6102N).
-2. **Tool Execution**: The agent automatically invokes `mcp_scope-d1dbfccf30e6_measure_vpp(channel=1)`.
+1. **Agent Tool Discovery**: The agent calls `mhs_discover_devices` and finds `scope-d1dbfccf30e6` (UNI-T UPO6102N).
+2. **Tool Execution**: The agent automatically invokes `mhs_scope-d1dbfccf30e6_measure_vpp(channel=1)`.
 3. **Agent Response**:
    > *"I queried the oscilloscope (UNI-T UPO6102N). The peak-to-peak voltage measured on Channel 1 is **0.02 V** (20 mV)."*
 
