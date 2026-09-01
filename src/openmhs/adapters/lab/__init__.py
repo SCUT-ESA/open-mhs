@@ -11,20 +11,48 @@ Supports:
 from __future__ import annotations
 
 import asyncio
-import random
-import time
-from typing import Any, Dict
+import math
+from typing import Any
 
+from openmhs.core.backend import BackendDevice, BackendPolicy
 from openmhs.core.device import (
-    BaseDevice, DeviceCapability, DeviceMetadata, DeviceState, SafetyLimit,
+    CapabilityError,
+    DeviceCapability,
+    DeviceMetadata,
+    SafetyLimit,
 )
 from openmhs.core.driver import Driver, DriverConfig, register_driver
 
 
-class MicroscopeDevice(BaseDevice):
+class MicroscopeDevice(BackendDevice):
     """Digital microscope."""
 
-    def __init__(self, device_id: str):
+    def _strict_validate(self, capability_name: str, params: dict[str, Any]) -> None:
+        super()._strict_validate(capability_name, params)
+        for name, value in params.items():
+            if name in {
+                "exposure",
+                "gain",
+                "resolution",
+                "x",
+                "y",
+                "z",
+                "intensity",
+                "wavelength",
+            } and (
+                not isinstance(value, (int, float))
+                or isinstance(value, bool)
+                or not math.isfinite(float(value))
+            ):
+                raise CapabilityError(f"{name} must be a finite number")
+        if "gain" in params and not 0 <= params["gain"] <= 100:
+            raise CapabilityError("gain is outside its safe range")
+        if "intensity" in params and not 0 <= params["intensity"] <= 100:
+            raise CapabilityError("intensity is outside its safe range")
+        if "speed" in params and params["speed"] not in {"slow", "medium", "fast"}:
+            raise CapabilityError("speed is unsupported")
+
+    def __init__(self, device_id: str, *, simulation: bool = False, backend_factory: Any = None):
         metadata = DeviceMetadata(
             device_id=device_id,
             device_type="microscope",
@@ -67,17 +95,24 @@ class MicroscopeDevice(BaseDevice):
             ),
             driver_class="microscope",
         )
-        super().__init__(metadata)
+        super().__init__(
+            metadata,
+            BackendPolicy(
+                simulation=simulation,
+                backend_factory=backend_factory,
+                backend_name="simulation",
+                supported=False,
+            ),
+        )
         self._focus_z = 0.0
         self._stage_x = 0.0
         self._stage_y = 0.0
         self._light_intensity = 50.0
 
     async def connect(self) -> bool:
-        self._set_state(DeviceState.ONLINE)
-        return True
+        return await super().connect()
 
-    async def _do_read(self, capability: str, **params: Any) -> Dict[str, Any]:
+    async def _do_read(self, capability: str, **params: Any) -> dict[str, Any]:
         if capability == "capture":
             return {
                 "captured": True,
@@ -87,7 +122,7 @@ class MicroscopeDevice(BaseDevice):
             }
         return {"error": f"Unknown capability: {capability}"}
 
-    async def _do_write(self, capability: str, **params: Any) -> Dict[str, Any]:
+    async def _do_write(self, capability: str, **params: Any) -> dict[str, Any]:
         if capability == "focus":
             z = params.get("z", 0)
             self._focus_z = z
@@ -109,29 +144,60 @@ class MicroscopeDevice(BaseDevice):
 class MicroscopeDriver(Driver):
     """Driver for digital microscopes."""
 
+    def __init__(
+        self, config: DriverConfig, *, simulation: bool | None = None, backend_factory: Any = None
+    ):
+        super().__init__(config, simulation=simulation, backend_factory=backend_factory)
+
     DRIVER_NAME = "microscope"
     SUPPORTED_DEVICES = ["microscope", "imaging"]
 
     async def connect(self) -> bool:
         device_id = self.config.connection_params.get("device_id", "scope_001")
-        self._device = MicroscopeDevice(device_id)
-        result = await self._device.connect()
-        self._connected = result
-        return result
+        return await self._connect_candidate(
+            MicroscopeDevice(
+                device_id, simulation=self.simulation, backend_factory=self.backend_factory
+            )
+        )
 
 
 # === Liquid Handler ===
 
-class LiquidHandlerDevice(BaseDevice):
+
+class LiquidHandlerDevice(BackendDevice):
     """Automated liquid handling robot."""
 
-    def __init__(self, device_id: str):
+    def _strict_validate(self, capability_name: str, params: dict[str, Any]) -> None:
+        super()._strict_validate(capability_name, params)
+        for name, value in params.items():
+            if name in {"volume", "x", "y", "z", "cycles"} and (
+                not isinstance(value, (int, float))
+                or isinstance(value, bool)
+                or not math.isfinite(float(value))
+            ):
+                raise CapabilityError(f"{name} must be a finite number")
+        bounds = (("volume", 0, 1000), ("x", 0, 300), ("y", 0, 200), ("z", 0, 150))
+        for name, low, high in bounds:
+            if name in params and not low <= params[name] <= high:
+                raise CapabilityError(f"{name} is outside its safe range")
+        if "cycles" in params and (
+            params["cycles"] < 0 or int(params["cycles"]) != params["cycles"]
+        ):
+            raise CapabilityError("cycles must be a non-negative integer")
+
+    def __init__(self, device_id: str, *, simulation: bool = False, backend_factory: Any = None):
         metadata = DeviceMetadata(
             device_id=device_id,
             device_type="liquid_handler",
             manufacturer="Generic",
             model="Pipetting Robot",
             capabilities=[
+                DeviceCapability(
+                    name="status",
+                    description="Get liquid handler status",
+                    parameters={},
+                    read_only=True,
+                ),
                 DeviceCapability(
                     name="aspirate",
                     description="Draw liquid into pipette",
@@ -170,19 +236,26 @@ class LiquidHandlerDevice(BaseDevice):
             ),
             driver_class="liquid_handler",
         )
-        super().__init__(metadata)
+        super().__init__(
+            metadata,
+            BackendPolicy(
+                simulation=simulation,
+                backend_factory=backend_factory,
+                backend_name="simulation",
+                supported=False,
+            ),
+        )
         self._position = {"x": 0, "y": 0, "z": 0}
 
     async def connect(self) -> bool:
-        self._set_state(DeviceState.ONLINE)
-        return True
+        return await super().connect()
 
-    async def _do_read(self, capability: str, **params: Any) -> Dict[str, Any]:
+    async def _do_read(self, capability: str, **params: Any) -> dict[str, Any]:
         if capability == "status":
             return {"position": self._position, "ready": True}
         return {"error": f"Unknown capability: {capability}"}
 
-    async def _do_write(self, capability: str, **params: Any) -> Dict[str, Any]:
+    async def _do_write(self, capability: str, **params: Any) -> dict[str, Any]:
         if capability == "aspirate":
             volume = params.get("volume", 100)
             return {"aspirated": volume, "unit": "ul"}
@@ -206,23 +279,30 @@ class LiquidHandlerDevice(BaseDevice):
 class LiquidHandlerDriver(Driver):
     """Driver for liquid handling robots."""
 
+    def __init__(
+        self, config: DriverConfig, *, simulation: bool | None = None, backend_factory: Any = None
+    ):
+        super().__init__(config, simulation=simulation, backend_factory=backend_factory)
+
     DRIVER_NAME = "liquid_handler"
     SUPPORTED_DEVICES = ["liquid_handler", "pipetting"]
 
     async def connect(self) -> bool:
         device_id = self.config.connection_params.get("device_id", "liquid_001")
-        self._device = LiquidHandlerDevice(device_id)
-        result = await self._device.connect()
-        self._connected = result
-        return result
+        return await self._connect_candidate(
+            LiquidHandlerDevice(
+                device_id, simulation=self.simulation, backend_factory=self.backend_factory
+            )
+        )
 
 
 # === Laser ===
 
-class LaserDevice(BaseDevice):
+
+class LaserDevice(BackendDevice):
     """Controllable laser system."""
 
-    def __init__(self, device_id: str):
+    def __init__(self, device_id: str, *, simulation: bool = False, backend_factory: Any = None):
         metadata = DeviceMetadata(
             device_id=device_id,
             device_type="laser",
@@ -258,20 +338,45 @@ class LaserDevice(BaseDevice):
             ),
             driver_class="laser",
         )
-        super().__init__(metadata)
+        super().__init__(
+            metadata,
+            BackendPolicy(
+                simulation=simulation,
+                backend_factory=backend_factory,
+                backend_name="simulation",
+                supported=False,
+            ),
+        )
         self._power = 0.0
         self._enabled = False
 
     async def connect(self) -> bool:
-        self._set_state(DeviceState.ONLINE)
-        return True
+        return await super().connect()
 
-    async def _do_read(self, capability: str, **params: Any) -> Dict[str, Any]:
+    async def _do_read(self, capability: str, **params: Any) -> dict[str, Any]:
         if capability == "status":
             return {"power": self._power, "enabled": self._enabled}
         return {"error": f"Unknown capability: {capability}"}
 
-    async def _do_write(self, capability: str, **params: Any) -> Dict[str, Any]:
+    def _strict_validate(self, capability_name: str, params: dict[str, Any]) -> None:
+        super()._strict_validate(capability_name, params)
+        if capability_name == "power":
+            power = params.get("power")
+            if (
+                not isinstance(power, (int, float))
+                or isinstance(power, bool)
+                or not 0 <= power <= 100
+            ):
+                raise CapabilityError("laser power must be between 0 and 100")
+        if capability_name == "align" and params.get("method") not in {"manual", "auto"}:
+            raise CapabilityError("laser alignment method must be manual or auto")
+
+    async def close(self) -> None:
+        self._power = 0.0
+        self._enabled = False
+        await super().close()
+
+    async def _do_write(self, capability: str, **params: Any) -> dict[str, Any]:
         if capability == "power":
             power = float(params.get("power", 0))
             self._power = power
@@ -288,12 +393,16 @@ class LaserDevice(BaseDevice):
 class LaserDriver(Driver):
     """Driver for laser systems."""
 
+    def __init__(
+        self, config: DriverConfig, *, simulation: bool | None = None, backend_factory: Any = None
+    ):
+        super().__init__(config, simulation=simulation, backend_factory=backend_factory)
+
     DRIVER_NAME = "laser"
     SUPPORTED_DEVICES = ["laser", "optics"]
 
     async def connect(self) -> bool:
         device_id = self.config.connection_params.get("device_id", "laser_001")
-        self._device = LaserDevice(device_id)
-        result = await self._device.connect()
-        self._connected = result
-        return result
+        return await self._connect_candidate(
+            LaserDevice(device_id, simulation=self.simulation, backend_factory=self.backend_factory)
+        )

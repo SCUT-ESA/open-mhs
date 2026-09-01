@@ -1,0 +1,66 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  quality:
+    name: Lint & Typecheck
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+        with:
+          enable-cache: true
+
+      - name: Set up Python
+        run: uv python install 3.10
+
+      - name: Install dependencies
+        run: uv sync --all-extras --dev
+
+      - name: Check uv.lock
+        run: uv lock --check
+
+      - name: Check formatting with Black
+        run: uv run black --check src tests
+
+      - name: Lint with Ruff
+        run: uv run ruff check src tests
+
+      - name: Typecheck with mypy
+        run: uv run mypy src
+
+  test-matrix:
+    name: Test Python ${{ matrix.python-version }} on ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        python-version: ["3.10", "3.11", "3.12", "3.13"]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+        with:
+          enable-cache: true
+
+      - name: Set up Python ${{ matrix.python-version }}
+        run: uv python install ${{ matrix.python-version }}
+
+      - name: Install package with all extras
+        run: uv sync --all-extras --dev
+
+      - name: Run pytest test suite
+        run: uv run pytest -q
+
+      - name: Build distributions
+        run: uv build

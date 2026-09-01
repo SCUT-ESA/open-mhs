@@ -1,5 +1,8 @@
 """Fake-instrument tests for the UTG2062X adapter."""
 
+import asyncio
+import threading
+
 import pytest
 
 from openmhs.adapters.waveform_generator import WaveformGeneratorDevice
@@ -109,6 +112,33 @@ async def test_identity_mismatch_closes_without_writes():
     assert instrument.write_calls == []
     assert instrument.close_count == 1
     assert manager.close_count == 1
+
+
+@pytest.mark.asyncio
+async def test_connect_cancellation_wins_when_cleanup_fails():
+    started = threading.Event()
+    release = threading.Event()
+
+    class BlockingInstrument(FakeInstrument):
+        def query(self, command):
+            started.set()
+            release.wait(timeout=2)
+            return super().query(command)
+
+        def close(self):
+            self.close_count += 1
+            raise RuntimeError("close failed")
+
+    instrument = BlockingInstrument()
+    manager = FakeResourceManager(instrument)
+    device = WaveformGeneratorDevice("wavegen-test", "USB::GEN::INSTR", lambda: manager)
+    connecting = asyncio.create_task(device.connect())
+    await asyncio.to_thread(started.wait)
+    connecting.cancel()
+    release.set()
+    with pytest.raises(asyncio.CancelledError):
+        await connecting
+    assert device.state is DeviceState.ERROR
 
 
 @pytest.mark.asyncio

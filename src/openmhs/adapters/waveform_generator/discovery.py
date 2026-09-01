@@ -53,7 +53,6 @@ class WaveformGeneratorDiscoveryManager(VisaDiscoveryManager):
         )
 
 
-
 __all__ = [
     "DiscoveredWaveformGenerator",
     "DiscoveryIssue",

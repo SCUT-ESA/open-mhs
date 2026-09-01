@@ -36,8 +36,13 @@ class OscilloscopeDiscoveryManager(VisaDiscoveryManager):
     ) -> None:
         factory = driver_factory or OscilloscopeDriver
         spec = VisaDeviceSpec(
-            "oscilloscope", "oscilloscope", "oscilloscope",
-            matches_upo6102n, factory, "scope", DiscoveredOscilloscope,
+            "oscilloscope",
+            "oscilloscope",
+            "oscilloscope",
+            matches_upo6102n,
+            factory,
+            "scope",
+            DiscoveredOscilloscope,
         )
         super().__init__(
             registry,
@@ -50,6 +55,12 @@ class OscilloscopeDiscoveryManager(VisaDiscoveryManager):
 
 
 __all__ = [
-    "DiscoveredDevice", "DiscoveredOscilloscope", "DiscoveryIssue", "DiscoveryState",
-    "OscilloscopeDiscoveryManager", "ProbeSnapshot", "ResourceObservation", "ScanResult",
+    "DiscoveredDevice",
+    "DiscoveredOscilloscope",
+    "DiscoveryIssue",
+    "DiscoveryState",
+    "OscilloscopeDiscoveryManager",
+    "ProbeSnapshot",
+    "ResourceObservation",
+    "ScanResult",
 ]

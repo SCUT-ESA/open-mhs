@@ -22,11 +22,7 @@ def test_utg2062x_read_only_queries(channel: int) -> None:
         instrument.timeout = 2000
         identity = instrument.query("*IDN?").strip()
         fields = [field.strip() for field in identity.split(",")]
-        if (
-            len(fields) < 2
-            or "UNI-T" not in fields[0].upper()
-            or fields[1].upper() != "UTG2062X"
-        ):
+        if len(fields) < 2 or "UNI-T" not in fields[0].upper() or fields[1].upper() != "UTG2062X":
             pytest.skip("connected resource is not a UNI-T UTG2062X")
         instrument.query(f":CHANnel{channel}:OUTPut?")
         instrument.query(f":CHANnel{channel}:BASE:WAVe?")

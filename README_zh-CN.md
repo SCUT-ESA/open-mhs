@@ -7,37 +7,37 @@
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 [![Stars](https://img.shields.io/github/stars/SCUT-ESA/open-mhs)](https://github.com/SCUT-ESA/open-mhs)
 
-> **Open Model Hardware Standard (MHS)** —— 面向 AI Agent 物理硬件控制的开源标准实现，灵感源自 [Anthropic Model Hardware Standard](https://www.anthropic.com/news/model-hardware-standard-research-preview)。
+> **Open Model Hardware Standard (MHS)** —— 面向 AI Agent 物理硬件控制与仿真驱动的开源标准实现，灵感源自 [Anthropic Model Hardware Standard](https://www.anthropic.com/news/model-hardware-standard-research-preview)。
 
-Open MHS 让各类 AI Agent（如 Claude、GPT、Cursor、Cline 等）能够通过统一的协议**发现、监控并安全控制真实的物理硬件设备**。可以将其理解为**物理硬件世界的 MCP（Model Context Protocol）**。
+Open MHS 让各类 AI Agent（如 Claude、GPT、Cursor、Cline 等）能够通过统一的协议**发现、监控并安全控制真实的物理硬件设备与确定性仿真模型**。可以将其理解为**物理硬件世界的 MCP（Model Context Protocol）**。
 
 ---
 
 ## 什么是 MHS？
 
-[Anthropic 的 MHS](https://www.anthropic.com/news/model-hardware-standard-research-preview) 是一套用于让 AI Agent 控制实验室仪器、机器人和制造设备的标准。**Open MHS** 是其开源实现，致力于将这一能力普及给所有开发者与研究者。
+[Anthropic 的 MHS](https://www.anthropic.com/news/model-hardware-standard-research-preview) 是一套用于让 AI Agent 控制实验室仪器、机器人和制造设备的标准。**Open MHS** 提供了安全第一、失败关闭（Fail-Closed）的开源实现。
 
 ### 核心特性
 
 - **统一的设备接口**：一套抽象协议连接并操作所有传感器、仪器与执行器
-- **安全第一的设计**：内置参数范围校验、安全边界检查与只读/写入权限隔离
+- **安全第一与失败关闭（Fail-Closed）**：内置参数范围校验、非有限数值拦截、安全边界检查与默认安全回退
 - **模型与 Agent 无关**：无缝兼容 Claude Code、Claude Desktop、Cursor、Cline、LangChain 及自定义 Agent
-- **原生 MCP 支持**：将扫描到的真实硬件动态暴露为标准 MCP Tools
-- **多传输方式**：支持 CLI 命令行、REST API 与 MCP Server（stdio / HTTP）
-- **广泛的硬件适配**：涵盖示波器、传感器、机械臂、摄像头到 3D 打印机等
+- **原生 MCP 支持**：将扫描到的真实硬件动态暴露为标准 MCP Tools（支持 stdio 与 Streamable HTTP `/mcp`）
+- **多传输与网络安全**：支持 CLI 命令行、REST API 与标准 MCP Server；默认仅监听回环地址，非回环访问强制 Bearer Token 与 TLS 反向代理防护
+- **广泛的硬件与仿真适配**：涵盖已验证的 VISA 实验室仪器、实验性嵌入式 I/O 与确定性仿真适配器
 
 ---
 
-## 支持的硬件设备
+## 支持的硬件设备与适配器状态
 
-| 分类 | 设备 / 模块 | 状态 |
+| 分类 | 设备 / 模块 | 后端支持状态 |
 |---|---|---|
-| **实验室仪器** | 示波器（UNI-T UPO6102N，基于 PyVISA/USB）、波形发生器（UNI-T UTG2062X）、显微镜、激光发生器、移液机 | ✅ 就绪 |
-| **传感器** | 温湿度（BME280）、超声波测距（HC-SR04）、光照、气体、IMU | ✅ 就绪 |
-| **视觉与摄像头** | USB 摄像头、IP 网络摄像头、树莓派摄像头（Pi Camera） | ✅ 就绪 |
-| **嵌入式与主控** | 树莓派 GPIO、Arduino（串口通信） | ✅ 就绪 |
-| **智能家居** | MQTT 设备、智能插座、智能灯泡 | ✅ 就绪 |
-| **机器人与制造** | 六自由度机械臂、3D 打印机（G-code） | ✅ 就绪 |
+| **实验室仪器** | 示波器（UNI-T UPO6102N，基于 PyVISA/USB）、波形发生器（UNI-T UTG2062X） | ✅ 已验证（真实硬件驱动） |
+| **视觉与摄像头** | USB 摄像头、IP 网络摄像头（基于 OpenCV） | 🔬 实验性真实驱动 & 仿真 |
+| **嵌入式与主控** | 树莓派 GPIO（基于 gpiozero）、Arduino 串口通信（协议握手验证） | 🔬 实验性真实驱动 & 仿真 |
+| **传感器** | 温湿度（BME280）、超声波测距（HC-SR04）、通用模拟量 | 🧪 确定性仿真 / 模型适配器 |
+| **智能家居** | MQTT 设备、智能插座 | 🧪 确定性仿真 / 模型适配器 |
+| **机器人与制造** | 六自由度机械臂、3D 打印机（FDM）、数码显微镜、移液机器人、激光器 | 🧪 确定性仿真 / 模型适配器 |
 
 ---
 
@@ -54,26 +54,17 @@ Open MHS 让各类 AI Agent（如 Claude、GPT、Cursor、Cline 等）能够通�
 git clone https://github.com/SCUT-ESA/open-mhs.git
 cd open-mhs
 
-# 2. 安装依赖（包含 MCP 与示波器支持）
+# 2. 安装依赖（包含 MCP、VISA 与 REST API 支持）
 # 方式 A：使用 uv（推荐）
-uv sync --extra mcp --extra visa
+uv sync --extra mcp --extra visa --extra api
 
 # 方式 B：使用 pip
-pip install -e ".[mcp,visa]"
-
-# 旧的示波器 extra 仍然兼容：
-# uv sync --extra mcp --extra oscilloscope
-# pip install -e ".[mcp,oscilloscope]"
-# 也可以只安装波形发生器支持：
-# uv sync --extra waveform_generator
-# pip install -e ".[waveform_generator]"
+pip install -e ".[mcp,visa,api]"
 ```
 
 > **注意（VISA 驱动环境）**：操作真实示波器或仪器时，请确保系统已安装 VISA 运行时（如 NI-VISA，或安装 `pip install pyvisa-py`）。
 
-VISA 自动发现支持 UNI-T UPO6102N 示波器，以及 UTG2000X 系列中的 UNI-T UTG2062X 波形发生器。发现和连接阶段只发送 `*IDN?`，不会启用输出，也不会改变波形或幅度。发生器提供 `identify`、`output_state`、`output`、`waveform` 和 `amplitude` 能力；通道参数必须是整数 1 或 2，写工具必须明确提供 `channel`，读工具省略时默认通道 1。示波器也提供同样通道规则的 `measure_frequency`。`amplitude` 使用仪器当前配置的电压单位，允许范围取决于负载和仪器配置。动态工具名格式为 `mhs_<device_id>_<capability>`（例如 `mhs_wavegen-<hash>_output`）。
-
-真实 USB 测试默认关闭且只读：只能枚举资源、查询 `*IDN?` 和执行只读查询。不要把 `examples/oscilloscope.py` 中包含写操作的示例当作 UTG 安全验证流程。
+VISA 自动发现支持 UNI-T UPO6102N 示波器，以及 UTG2000X 系列中的 UNI-T UTG2062X 波形发生器。发现和连接阶段只发送 `*IDN?`，不会启用输出，也不会改变波形或幅度。规范设备 ID 为确定性哈希格式（例如 `scope-<hash>` / `wavegen-<hash>`）。
 
 ---
 
@@ -93,17 +84,22 @@ mhs discover
 
 终端将打印已发现的设备表格：
 ```text
-┏━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━┳━━━━━━━┳━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
-┃ Device ID          ┃ Type         ┃ Manufacturer ┃ State ┃ Capabilities                   ┃
-┡━━━━━━━━━━━━━━━━━━━━╇━━━━━━━━━━━━━━╇━━━━━━━━━━━━━━╇━━━━━━━╇━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┩
-│ scope-d1dbfccf30e6 │ oscilloscope │ UNI-T        │ ONLINE│ identify, measure_vpp, run, ...│
-└────────────────────┴──────────────┴──────────────┴───────┴────────────────────────────────┘
+┏━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━┳━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
+┃ Device ID          ┃ Type         ┃ Manufacturer ┃ State   ┃ Capabilities                   ┃
+┡━━━━━━━━━━━━━━━━━━━━╇━━━━━━━━━━━━━━╇━━━━━━━━━━━━━━╇━━━━━━━━━╇━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┩
+│ scope-a1b2c3d4e5f6 │ oscilloscope │ UNI-T        │ ONLINE  │ identify, measure_vpp, run, ...│
+└────────────────────┴──────────────┴──────────────┴─────────┴────────────────────────────────┘
 ```
 
 可以直接通过 CLI 进行一次读数测试：
 ```bash
-uv run mhs read scope-d1dbfccf30e6 measure_vpp channel=1
-# 预期输出：{"channel": 1, "value": 0.02, "unit": "V"}
+uv run mhs read scope-a1b2c3d4e5f6 measure_vpp channel=1
+```
+
+如无物理硬件，可使用 `--simulation` 参数测试仿真适配器：
+```bash
+uv run mhs discover --simulation
+uv run mhs read --simulation sensor_001 temperature
 ```
 
 ---
@@ -138,7 +134,7 @@ Open MHS 会自动将已连接的硬件包装为标准 MCP 工具并对外提供
   "mcpServers": {
     "openmhs": {
       "command": "uv",
-      "args": ["--directory", "E:/code/open-mhs", "run", "mhs", "serve", "--mode", "stdio"]
+      "args": ["--directory", "<path/to/open-mhs>", "run", "mhs", "serve", "--mode", "stdio"]
     }
   }
 }
@@ -154,8 +150,8 @@ Open MHS 会自动将已连接的硬件包装为标准 MCP 工具并对外提供
 > **用户**：*"帮我通过示波器测量一下通道 1 的峰峰值电压。"*
 
 #### Agent 执行流程：
-1. **设备发现**：Agent 调用 `mhs_discover_devices` 工具，获取当前在线设备 `scope-d1dbfccf30e6`（UNI-T UPO6102N）。
-2. **工具调用**：Agent 自动调用 `mhs_scope-d1dbfccf30e6_measure_vpp(channel=1)` 发送测量指令。
+1. **设备发现**：Agent 调用 `mhs_discover_devices` 工具，获取当前在线设备 `scope-a1b2c3d4e5f6`（UNI-T UPO6102N）。
+2. **工具调用**：Agent 自动调用 `mhs_scope-a1b2c3d4e5f6_measure_vpp(channel=1)` 发送测量指令。
 3. **Agent 输出结果**：
    > *"已通过示波器（UNI-T UPO6102N）完成测量，通道 1 当前的峰峰值电压（$V_{pp}$）为 **0.02 V**（即 **20 mV**）。"*
 
@@ -179,14 +175,17 @@ async def main():
         },
     )
     driver = OscilloscopeDriver(config)
-    await driver.connect()
+    ok = await driver.connect()
+    if not ok or driver.device is None:
+        print("连接示波器失败。")
+        return
 
-    if driver.device:
+    try:
         # 读取通道 1 的峰峰值电压
         result = await driver.device.read("measure_vpp", channel=1)
         print(f"峰峰值电压: {result['value']} {result['unit']}")
-
-    await driver.disconnect()
+    finally:
+        await driver.disconnect()
 
 asyncio.run(main())
 ```
@@ -194,19 +193,20 @@ asyncio.run(main())
 ### 2. CLI 命令行操作
 
 ```bash
-# 生成模拟演示设备（无需真实硬件即可测试）
+# 注册演示设备
 mhs demo
 
-# 发现并列出所有设备
+# 发现硬件设备
 mhs discover
 
+# 发现并包含仿真模型设备
+mhs discover --simulation
+
 # 从设备读取数据
-mhs read sensor_001 temperature
-mhs read scope-d1dbfccf30e6 measure_vpp channel=1
+mhs read --simulation sensor_001 temperature
 
 # 向设备写入控制指令
-mhs write arm_001 cartesian_position x=250 y=100 z=300 speed=80
-mhs write scope-d1dbfccf30e6 run
+mhs write --simulation arm_001 cartesian_position x=250 y=100 z=300 speed=80
 
 # 检查所有设备健康状态
 mhs status
@@ -215,17 +215,19 @@ mhs status
 ### 3. REST API 服务
 
 ```bash
-# 启动 REST API 服务（默认端口 8000）
+# 启动 REST API 服务（默认绑定 127.0.0.1:8000）
 mhs api --port 8000
 
 # 查询设备列表
-curl http://localhost:8000/devices
+curl http://127.0.0.1:8000/devices
 
 # 读取设备能力
-curl -X POST http://localhost:8000/devices/scope-d1dbfccf30e6/read/measure_vpp \
+curl -X POST http://127.0.0.1:8000/devices/scope-a1b2c3d4e5f6/read/measure_vpp \
   -H "Content-Type: application/json" \
-  -d '{"channel": 1}'
+  -d "{\"params\": {\"channel\": 1}}"
 ```
+
+> **安全说明**：绑定非回环地址（如 `--host 0.0.0.0`）必须配置 `OPENMHS_BEARER_TOKEN`，并通过 TLS 反向代理（`OPENMHS_BEHIND_TLS_PROXY=1`）或显式允许非安全 HTTP（`OPENMHS_ALLOW_INSECURE_HTTP=1`）。
 
 ### 4. 独立 MCP 服务
 
@@ -233,54 +235,32 @@ curl -X POST http://localhost:8000/devices/scope-d1dbfccf30e6/read/measure_vpp \
 # Stdio 模式（用于 Agent CLI、Claude Desktop）
 mhs serve --mode stdio
 
-# HTTP 模式
-mhs serve --mode http
-```
-
----
-
-## 系统架构
-
-```text
-┌─────────────────────────────────────────────────────────────┐
-│          AI Agent（Claude Code、Cursor、GPT、Cline 等）       │
-└──────────────────────────────┬──────────────────────────────┘
-                               │ MCP / CLI / REST API
-┌──────────────────────────────▼──────────────────────────────┐
-│                  Open MHS 统一协议层                         │
-│  ┌─────────┐  ┌──────────┐  ┌──────────┐  ┌─────────────┐   │
-│  │  Read   │  │  Write   │  │ Discover │  │ Health Check│   │
-│  │ (读取)  │  │ (控制)   │  │ (发现)   │  │  (健康检查) │   │
-│  └─────────┘  └──────────┘  └──────────┘  └─────────────┘   │
-└──────────────────────────────┬──────────────────────────────┘
-                               │ 统一驱动接口（Driver Interface）
-┌──────────────────────────────▼──────────────────────────────┐
-│                      硬件适配器层                            │
-│  ┌──────────────┐ ┌──────────────┐ ┌──────────────┐ ┌─────┐ │
-│  │ 示波器/仪器  │ │  各类传感器  │ │  机械臂/执行 │ │ ... │ │
-│  │ (UNI-T VISA) │ │ (BME280/Temp)│ │ (6-DoF/UART) │ │     │ │
-│  └──────────────┘ └──────────────┘ └──────────────┘ └─────┘ │
-└──────────────────────────────┬──────────────────────────────┘
-                               │ 物理传输协议 (USB/VISA/I2C/SPI/GPIO)
-┌──────────────────────────────▼──────────────────────────────┐
-│                      物理硬件设备                           │
-└─────────────────────────────────────────────────────────────┘
+# 标准 Streamable HTTP 模式（/mcp 端点）
+mhs serve --mode http --host 127.0.0.1 --port 8080
 ```
 
 ---
 
 ## 编写自定义硬件驱动
 
-只需继承 `BaseDevice` 与 `Driver` 并使用 `@register_driver` 装饰器：
-
 ```python
-from openmhs.core.device import BaseDevice, DeviceCapability, DeviceMetadata, DeviceState
+from openmhs.core.backend import BackendDevice, BackendPolicy
+from openmhs.core.device import DeviceCapability, DeviceMetadata
 from openmhs.core.driver import Driver, DriverConfig, register_driver
 
-class MyCustomDevice(BaseDevice):
-    async def connect(self) -> bool:
-        self._set_state(DeviceState.ONLINE)
-        return True
+class MyCustomDevice(BackendDevice):
+    def __init__(self, device_id: str, *, simulation: bool = False):
+        metadata = DeviceMetadata(
+            device_id=device_id,
+            device_type="my_custom_device",
+            manufacturer="Custom",
+            model="Model 1",
+            capabilities=[
+                DeviceCapability(name="status", description="Get status", read_only=True),
+                DeviceCapability(name="set_value", description="Set value", read_only=False),
+            ],
+        )
+        super().__init__(metadata, BackendPolicy(simulation=simulation, backend_name="custom"))
 
     async def _do_read(self, capability: str, **params):
         if capability == "status":
@@ -288,7 +268,9 @@ class MyCustomDevice(BaseDevice):
         return {"error": f"Unknown capability: {capability}"}
 
     async def _do_write(self, capability: str, **params):
-        return {"result": "success", "params": params}
+        if capability == "set_value":
+            return {"result": "success", "params": params}
+        return {"error": f"Unknown capability: {capability}"}
 
 @register_driver
 class MyCustomDriver(Driver):
@@ -296,25 +278,25 @@ class MyCustomDriver(Driver):
     SUPPORTED_DEVICES = ["my_custom_device"]
 
     async def connect(self) -> bool:
-        self._device = MyCustomDevice(...)
-        return True
+        device_id = self.config.connection_params.get("device_id", "my_001")
+        candidate = MyCustomDevice(device_id, simulation=self.simulation)
+        return await self._connect_candidate(candidate)
 ```
 
 ---
 
 ## 项目状态与路线图
 
-本项目目前处于 **Alpha** 阶段，正在积极迭代并持续扩充真实硬件驱动支持。
+本项目目前处于 **Alpha** 阶段，提供严格的类型边界、失败关闭安全设计与标准 MCP/REST/CLI 接入。
 
 - [x] 核心协议与动态设备注册表
-- [x] 驱动生命周期管理与安全边界校验
-- [x] MCP Server 服务集成（stdio / HTTP）与动态热发现
-- [x] CLI 命令行与 REST API 服务
-- [x] 示波器适配器（UNI-T UPO6102N，PyVISA 驱动与会话保护）
-- [x] 传感器适配器（BME280、HC-SR04 超声波、模拟量传感器等）
-- [x] 机械臂、摄像头、3D 打印机、GPIO、Arduino、MQTT 适配器
+- [x] 驱动生命周期管理、参数与安全边界校验
+- [x] 原生 MCP Server 服务（stdio / Streamable HTTP `/mcp`）
+- [x] CLI 命令行与 REST API 服务（支持回环默认与 Token 安全）
+- [x] 示波器适配器（UNI-T UPO6102N，PyVISA 驱动、只读连接保护与型号精确匹配）
+- [x] 波形发生器适配器（UNI-T UTG2062X，PyVISA 驱动与会话保护）
+- [x] 摄像头、GPIO、Arduino、传感器、智能家居、机械臂、3D打印机适配器（支持显式仿真与可注入后端）
 - [ ] 真实 I2C / SPI 总线自动扫描支持
-- [ ] 物理设备数字孪生与仿真环境
 - [ ] Web 控制台与实时遥测波形看板
 - [ ] 多 Agent 协同实验室自动化工作流
 

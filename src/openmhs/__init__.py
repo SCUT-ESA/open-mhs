@@ -12,7 +12,7 @@ __version__ = "0.1.0"
 
 from openmhs.core.device import Device, DeviceCapability, DeviceMetadata, SafetyLimit
 from openmhs.core.driver import Driver, DriverConfig
-from openmhs.core.protocol import MHSProtocol, Command, CommandType, Response
+from openmhs.core.protocol import Command, CommandType, MHSProtocol, Response
 from openmhs.core.registry import DeviceRegistry
 
 __all__ = [

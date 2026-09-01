@@ -9,35 +9,35 @@
 
 > **Open Model Hardware Standard (MHS)** — An open-source implementation of AI agent hardware control, inspired by [Anthropic's Model Hardware Standard](https://www.anthropic.com/news/model-hardware-standard-research-preview).
 
-MHS enables AI agents to **discover, monitor, and safely operate physical devices** through a unified protocol. Think of it as **MCP for the physical world**.
+MHS enables AI agents to **discover, monitor, and safely operate physical and simulated devices** through a unified protocol. Think of it as **MCP for the physical world**.
 
 ---
 
 ## What is MHS?
 
-[Anthropic's MHS](https://www.anthropic.com/news/model-hardware-standard-research-preview) is a research preview standard that lets AI agents control lab equipment, robots, and manufacturing devices. **Open MHS** is an open-source implementation, making this capability accessible to everyone.
+[Anthropic's MHS](https://www.anthropic.com/news/model-hardware-standard-research-preview) is a research preview standard that lets AI agents control lab equipment, robots, and manufacturing devices. **Open MHS** provides a secure, fail-closed open-source implementation.
 
 ### Key Features
 
 - **Unified Device Interface** — Single protocol for all hardware
-- **Safety-First Design** — Built-in limits, validation, and safe defaults
+- **Safety-First & Fail-Closed** — Built-in parameter limits, finite number validation, and safe defaults (non-operational when unverified)
 - **Model & Agent Agnostic** — Works with Claude, GPT, Cursor, Cline, LangChain, or custom agents
-- **MCP Native** — Dynamically exposes connected hardware as standard MCP tools
-- **Multi-Transport** — CLI, REST API, and MCP server (stdio / HTTP)
-- **Broad Hardware Support** — From sensors and oscilloscopes to robot arms
+- **MCP Native** — Dynamically exposes connected hardware as standard MCP tools (stdio & Streamable HTTP `/mcp`)
+- **Multi-Transport & Secure** — CLI, REST API, and standard MCP server with loopback-by-default and Bearer token security for remote bindings
+- **Broad Hardware & Simulation Support** — Verified VISA lab instruments, experimental embedded I/O, and deterministic simulation adapters
 
 ---
 
-## Supported Hardware
+## Supported Hardware & Adapters
 
-| Category | Devices | Status |
+| Category | Devices / Models | Backend Status |
 |---|---|---|
-| **Lab Equipment** | Oscilloscopes (UNI-T UPO6102N via VISA/USB), Waveform Generators (UNI-T UTG2062X), Microscopes, Lasers, Liquid Handlers | ✅ Ready |
-| **Sensors** | Temperature, Humidity (BME280), Distance (HC-SR04), Light, Gas, IMU | ✅ Ready |
-| **Cameras** | USB Webcam, IP Camera, Raspberry Pi Camera | ✅ Ready |
-| **Embedded** | Raspberry Pi GPIO, Arduino (Serial) | ✅ Ready |
-| **Smart Home** | MQTT devices, Smart Plugs, Lights | ✅ Ready |
-| **Robotics** | Robot Arms (6-DoF), 3D Printers | ✅ Ready |
+| **Lab Instruments** | Oscilloscopes (UNI-T UPO6102N via PyVISA/USB), Waveform Generators (UNI-T UTG2062X) | ✅ Verified (Real Hardware) |
+| **Vision** | USB Webcam, IP Camera (via OpenCV) | 🔬 Experimental Real & Simulation |
+| **Embedded & I/O** | Raspberry Pi GPIO (via gpiozero), Arduino Serial (Verified Protocol Handshake) | 🔬 Experimental Real & Simulation |
+| **Sensors** | Temperature/Humidity (BME280), Distance (HC-SR04), Generic Analog | 🧪 Simulation / Model Adapter |
+| **Smart Home** | MQTT Devices, Smart Plugs | 🧪 Simulation / Model Adapter |
+| **Robotics & Lab** | 6-DoF Robot Arm, 3D Printer (FDM), Digital Microscope, Pipetting Robot, Laser | 🧪 Simulation / Model Adapter |
 
 ---
 
@@ -55,30 +55,21 @@ git clone https://github.com/SCUT-ESA/open-mhs.git
 cd open-mhs
 
 # Option A: With uv (Recommended)
-uv sync --extra mcp --extra visa
+uv sync --extra mcp --extra visa --extra api
 
 # Option B: With pip
-pip install -e ".[mcp,visa]"
-
-# The legacy oscilloscope extra remains supported:
-# uv sync --extra mcp --extra oscilloscope
-# pip install -e ".[mcp,oscilloscope]"
-# Or install only generator support:
-# uv sync --extra waveform_generator
-# pip install -e ".[waveform_generator]"
+pip install -e ".[mcp,visa,api]"
 ```
 
-> **Note for VISA Instruments**: Ensure you have NI-VISA or a compatible VISA library installed (or `pip install pyvisa-py`).
+> **Note for VISA Instruments**: Ensure you have NI-VISA or a compatible VISA backend installed (or `pip install pyvisa-py`).
 
-VISA discovery supports UNI-T UPO6102N oscilloscopes and the UNI-T UTG2062X in the UTG2000X waveform-generator series. Discovery and connection send only `*IDN?`; they never enable output or change waveform/amplitude. The generator exposes `identify`, `output_state`, `output`, `waveform`, and `amplitude` tools. Output channels are integers 1 or 2; write tools require `channel` explicitly, while read tools default to channel 1 when omitted. The oscilloscope also exposes `measure_frequency` with the same channel schema. `amplitude` uses the instrument's current voltage unit and its permitted range depends on load and instrument configuration. The dynamic names are `mhs_<device_id>_<capability>` (for example, `mhs_wavegen-<hash>_output`).
-
-Real USB tests are opt-in and read-only: they may enumerate resources, query `*IDN?`, and run read queries only. Do not use the write examples in `examples/oscilloscope.py` as UTG safety verification.
+VISA discovery supports UNI-T UPO6102N oscilloscopes and UNI-T UTG2062X waveform generators. Discovery and connection send only read-only `*IDN?` queries; they never enable output or change waveform parameters. Canonical device IDs are deterministic hashes (`scope-<hash>` / `wavegen-<hash>`).
 
 ---
 
 ### Step 2: Connect Hardware & Verify with CLI
 
-Connect your oscilloscope (e.g., UNI-T UPO6102N) to your computer via USB.
+Connect your instrument (e.g., UNI-T UPO6102N) to your computer via USB.
 
 Run device discovery to verify the connection:
 
@@ -90,19 +81,24 @@ uv run mhs discover
 mhs discover
 ```
 
-You will see the detected hardware in the output:
+You will see detected hardware in the output:
 ```text
-┏━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━┳━━━━━━━┳━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
-┃ Device ID          ┃ Type         ┃ Manufacturer ┃ State ┃ Capabilities                   ┃
-┡━━━━━━━━━━━━━━━━━━━━╇━━━━━━━━━━━━━━╇━━━━━━━━━━━━━━╇━━━━━━━╇━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┩
-│ scope-d1dbfccf30e6 │ oscilloscope │ UNI-T        │ ONLINE│ identify, measure_vpp, run, ...│
-└────────────────────┴──────────────┴──────────────┴───────┴────────────────────────────────┘
+┏━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━┳━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
+┃ Device ID          ┃ Type         ┃ Manufacturer ┃ State   ┃ Capabilities                   ┃
+┡━━━━━━━━━━━━━━━━━━━━╇━━━━━━━━━━━━━━╇━━━━━━━━━━━━━━╇━━━━━━━━━╇━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┩
+┃ scope-a1b2c3d4e5f6 ┃ oscilloscope ┃ UNI-T        ┃ ONLINE  ┃ identify, measure_vpp, run, ...┃
+└────────────────────┴──────────────┴──────────────┴─────────┴────────────────────────────────┘
 ```
 
 You can test a manual read directly via CLI:
 ```bash
-uv run mhs read scope-d1dbfccf30e6 measure_vpp channel=1
-# Output: {"channel": 1, "value": 0.02, "unit": "V"}
+uv run mhs read scope-a1b2c3d4e5f6 measure_vpp channel=1
+```
+
+For simulated demo devices without physical hardware:
+```bash
+uv run mhs discover --simulation
+uv run mhs read --simulation sensor_001 temperature
 ```
 
 ---
@@ -150,11 +146,11 @@ Add to your `claude_desktop_config.json`:
 Once the MCP server is configured, open your agent (Claude Code, Claude Desktop, Cursor, etc.) and complete a task with natural language:
 
 #### Example Prompt:
-> **User**: *"Help me check the oscilloscope identity and measure the peak-to-peak voltage ($V_{pp}$) on channel 1."*
+> **User**: *"Check connected instruments, identify the oscilloscope, and measure the peak-to-peak voltage on channel 1."*
 
 #### Agent Flow:
-1. **Agent Tool Discovery**: The agent calls `mhs_discover_devices` and finds `scope-d1dbfccf30e6` (UNI-T UPO6102N).
-2. **Tool Execution**: The agent automatically invokes `mhs_scope-d1dbfccf30e6_measure_vpp(channel=1)`.
+1. **Agent Tool Discovery**: The agent calls `mhs_discover_devices` and finds `scope-a1b2c3d4e5f6` (UNI-T UPO6102N).
+2. **Tool Execution**: The agent automatically invokes `mhs_scope-a1b2c3d4e5f6_measure_vpp(channel=1)`.
 3. **Agent Response**:
    > *"I queried the oscilloscope (UNI-T UPO6102N). The peak-to-peak voltage measured on Channel 1 is **0.02 V** (20 mV)."*
 
@@ -178,14 +174,17 @@ async def main():
         },
     )
     driver = OscilloscopeDriver(config)
-    await driver.connect()
+    ok = await driver.connect()
+    if not ok or driver.device is None:
+        print("Failed to connect to oscilloscope.")
+        return
 
-    if driver.device:
+    try:
         # Measure peak-to-peak voltage on channel 1
         result = await driver.device.read("measure_vpp", channel=1)
         print(f"Vpp: {result['value']} {result['unit']}")
-
-    await driver.disconnect()
+    finally:
+        await driver.disconnect()
 
 asyncio.run(main())
 ```
@@ -193,38 +192,39 @@ asyncio.run(main())
 ### 2. CLI Usage
 
 ```bash
-# Setup demo devices for testing without physical hardware
+# Setup demo devices for testing
 mhs demo
 
-# Discover connected hardware
+# Discover hardware
 mhs discover
 
-# Read from a device
-mhs read sensor_001 temperature
-mhs read scope-d1dbfccf30e6 measure_vpp channel=1
+# Discover with simulation adapters included
+mhs discover --simulation
 
-# Write to a device
-mhs write arm_001 cartesian_position x=250 y=100 z=300 speed=80
-mhs write scope-d1dbfccf30e6 run
+# Read and write
+mhs read --simulation sensor_001 temperature
+mhs write --simulation arm_001 cartesian_position x=250 y=100 z=300 speed=80
 
-# Check system & device health
+# Check health
 mhs status
 ```
 
 ### 3. REST API
 
 ```bash
-# Start the REST API server
+# Start the REST API server (binds to 127.0.0.1:8000 by default)
 mhs api --port 8000
 
 # List registered devices
-curl http://localhost:8000/devices
+curl http://127.0.0.1:8000/devices
 
 # Read from a device
-curl -X POST http://localhost:8000/devices/scope-d1dbfccf30e6/read/measure_vpp \
+curl -X POST http://127.0.0.1:8000/devices/scope-a1b2c3d4e5f6/read/measure_vpp \
   -H "Content-Type: application/json" \
-  -d '{"channel": 1}'
+  -d "{\"params\": {\"channel\": 1}}"
 ```
+
+> **Security Note**: Non-loopback bindings (e.g. `--host 0.0.0.0`) require `OPENMHS_BEARER_TOKEN` and running behind a TLS reverse proxy (`OPENMHS_BEHIND_TLS_PROXY=1`) or explicit insecure override (`OPENMHS_ALLOW_INSECURE_HTTP=1`).
 
 ### 4. Standalone MCP Server
 
@@ -232,37 +232,8 @@ curl -X POST http://localhost:8000/devices/scope-d1dbfccf30e6/read/measure_vpp \
 # Stdio mode (for AI Agent CLI / Claude Desktop)
 mhs serve --mode stdio
 
-# HTTP mode
-mhs serve --mode http
-```
-
----
-
-## Architecture
-
-```text
-┌─────────────────────────────────────────────────────────────┐
-│             AI Agent (Claude Code, Cursor, GPT, etc.)       │
-└──────────────────────────────┬──────────────────────────────┘
-                               │ MCP / CLI / REST API
-┌──────────────────────────────▼──────────────────────────────┐
-│                  Open MHS Protocol Layer                    │
-│  ┌─────────┐  ┌──────────┐  ┌──────────┐  ┌─────────────┐   │
-│  │  Read   │  │  Write   │  │ Discover │  │ Health Check│   │
-│  └─────────┘  └──────────┘  └──────────┘  └─────────────┘   │
-└──────────────────────────────┬──────────────────────────────┘
-                               │ Unified Driver Interface
-┌──────────────────────────────▼──────────────────────────────┐
-│                    Hardware Adapters                         │
-│  ┌──────────────┐ ┌──────────────┐ ┌──────────────┐ ┌─────┐ │
-│  │Oscilloscopes │ │   Sensors    │ │ Robot Arms   │ │ ... │ │
-│  │ (UNI-T VISA) │ │ (BME280/Temp)│ │ (6-DoF/UART) │ │     │ │
-│  └──────────────┘ └──────────────┘ └──────────────┘ └─────┘ │
-└──────────────────────────────┬──────────────────────────────┘
-                               │ Physical Transport (USB/VISA/I2C/GPIO)
-┌──────────────────────────────▼──────────────────────────────┐
-│                      Physical Devices                       │
-└─────────────────────────────────────────────────────────────┘
+# Standard Streamable HTTP mode (/mcp endpoint)
+mhs serve --mode http --host 127.0.0.1 --port 8080
 ```
 
 ---
@@ -270,13 +241,23 @@ mhs serve --mode http
 ## Writing a Custom Driver
 
 ```python
-from openmhs.core.device import BaseDevice, DeviceCapability, DeviceMetadata, DeviceState
+from openmhs.core.backend import BackendDevice, BackendPolicy
+from openmhs.core.device import DeviceCapability, DeviceMetadata, DeviceState
 from openmhs.core.driver import Driver, DriverConfig, register_driver
 
-class MyDevice(BaseDevice):
-    async def connect(self) -> bool:
-        self._set_state(DeviceState.ONLINE)
-        return True
+class MyDevice(BackendDevice):
+    def __init__(self, device_id: str, *, simulation: bool = False):
+        metadata = DeviceMetadata(
+            device_id=device_id,
+            device_type="custom_device",
+            manufacturer="Custom",
+            model="Model X",
+            capabilities=[
+                DeviceCapability(name="status", description="Get status", read_only=True),
+                DeviceCapability(name="set_value", description="Set value", read_only=False),
+            ],
+        )
+        super().__init__(metadata, BackendPolicy(simulation=simulation, backend_name="custom"))
 
     async def _do_read(self, capability: str, **params):
         if capability == "status":
@@ -284,46 +265,20 @@ class MyDevice(BaseDevice):
         return {"error": f"Unknown capability: {capability}"}
 
     async def _do_write(self, capability: str, **params):
-        return {"result": "success", "params": params}
+        if capability == "set_value":
+            return {"result": "success", "params": params}
+        return {"error": f"Unknown capability: {capability}"}
 
 @register_driver
 class MyDriver(Driver):
     DRIVER_NAME = "my_device"
-    SUPPORTED_DEVICES = ["my_device"]
+    SUPPORTED_DEVICES = ["custom_device"]
 
     async def connect(self) -> bool:
-        self._device = MyDevice(...)
-        return True
+        device_id = self.config.connection_params.get("device_id", "my_001")
+        candidate = MyDevice(device_id, simulation=self.simulation)
+        return await self._connect_candidate(candidate)
 ```
-
----
-
-## Project Status
-
-This is an **alpha** implementation based on the Model Hardware Standard architecture. The project is actively maintained and expanding real hardware support.
-
-### Roadmap
-
-- [x] Core protocol implementation & dynamic registry
-- [x] Device driver framework & safety boundaries
-- [x] MCP server integration (stdio & HTTP) with auto-discovery
-- [x] CLI & REST API tools
-- [x] Oscilloscope adapter (UNI-T UPO6102N via PyVISA)
-- [x] Sensor adapters (BME280, HC-SR04, analog)
-- [x] Camera, Robot Arm, 3D Printer, GPIO, Arduino, MQTT adapters
-- [ ] Real hardware I2C/SPI bus integration
-- [ ] Device simulation environment
-- [ ] Web dashboard & live telemetry
-- [ ] Multi-agent collaborative lab workflows
-
----
-
-## Contributing
-
-Contributions are warmly welcomed! Areas where help is needed:
-- New hardware drivers (multimeters, signal generators, power supplies, robotic stages)
-- Physical hardware testing and validation
-- Documentation, recipes, and agent integration examples
 
 ---
 

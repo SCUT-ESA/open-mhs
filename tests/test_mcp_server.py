@@ -132,14 +132,30 @@ async def test_waveform_generator_capabilities_are_dynamic_tools() -> None:
     class Generator:
         def __init__(self) -> None:
             self.metadata = DeviceMetadata(
-                device_id="wavegen-a1", device_type="waveform_generator",
-                manufacturer="UNI-T", model="UTG2062X",
+                device_id="wavegen-a1",
+                device_type="waveform_generator",
+                manufacturer="UNI-T",
+                model="UTG2062X",
                 capabilities=[
                     DeviceCapability("identify", read_only=True),
-                    DeviceCapability("output_state", parameters={"channel": {"type": "integer"}}, read_only=True),
-                    DeviceCapability("output", parameters={"channel": {"type": "integer"}, "enabled": {"type": "boolean"}}),
-                    DeviceCapability("waveform", parameters={"channel": {"type": "integer"}, "waveform": {"type": "string"}}),
-                    DeviceCapability("amplitude", parameters={"channel": {"type": "integer"}, "amplitude": {"type": "number"}}),
+                    DeviceCapability(
+                        "output_state", parameters={"channel": {"type": "integer"}}, read_only=True
+                    ),
+                    DeviceCapability(
+                        "output",
+                        parameters={"channel": {"type": "integer"}, "enabled": {"type": "boolean"}},
+                    ),
+                    DeviceCapability(
+                        "waveform",
+                        parameters={"channel": {"type": "integer"}, "waveform": {"type": "string"}},
+                    ),
+                    DeviceCapability(
+                        "amplitude",
+                        parameters={
+                            "channel": {"type": "integer"},
+                            "amplitude": {"type": "number"},
+                        },
+                    ),
                 ],
             )
             self.state = DeviceState.ONLINE
@@ -168,7 +184,10 @@ async def test_waveform_generator_capabilities_are_dynamic_tools() -> None:
     assert output_schema["required"] == ["channel", "enabled"]
     await server._call_tool_result("mhs_wavegen-a1_output", {"channel": 2, "enabled": True})
     await server._call_tool_result("mhs_wavegen-a1_output_state", {"channel": 2})
-    assert generator.calls == [("write", "output", {"channel": 2, "enabled": True}), ("read", "output_state", {"channel": 2})]
+    assert generator.calls == [
+        ("write", "output", {"channel": 2, "enabled": True}),
+        ("read", "output_state", {"channel": 2}),
+    ]
 
 
 @pytest.mark.asyncio
@@ -212,15 +231,45 @@ async def test_oscilloscope_display_capabilities_are_dynamic_tools() -> None:
     assert "mhs_scope-001_channel_display" in names
     assert "mhs_scope-001_channel_display_state" in names
 
-    display_schema = next(tool["inputSchema"] for tool in tools if tool["name"] == "mhs_scope-001_channel_display")
+    display_schema = next(
+        tool["inputSchema"] for tool in tools if tool["name"] == "mhs_scope-001_channel_display"
+    )
     assert display_schema["required"] == ["channel", "enabled"]
 
-    text, is_error = await server._call_tool_result("mhs_scope-001_channel_display", {"channel": 1, "enabled": False})
+    text, is_error = await server._call_tool_result(
+        "mhs_scope-001_channel_display", {"channel": 1, "enabled": False}
+    )
     assert not is_error
     assert json.loads(text) == {"channel": 1, "enabled": False}
     assert instrument.writes == [":CHANnel1:DISPlay OFF"]
 
-    text, is_error = await server._call_tool_result("mhs_scope-001_channel_display_state", {"channel": 1})
+    text, is_error = await server._call_tool_result(
+        "mhs_scope-001_channel_display_state", {"channel": 1}
+    )
     assert not is_error
     assert json.loads(text) == {"channel": 1, "enabled": True}
     assert instrument.queries == ["*IDN?", ":CHANnel1:DISPlay?"]
+
+
+@pytest.mark.asyncio
+async def test_streamable_http_app_creation() -> None:
+    registry = DeviceRegistry()
+    server = MHSMcpServer(registry)
+    app = server._server.streamable_http_app(streamable_http_path="/mcp")
+    assert app is not None
+
+
+@pytest.mark.asyncio
+async def test_registry_mutation_triggers_catalog_change_listener() -> None:
+    registry = DeviceRegistry()
+    server = MHSMcpServer(registry)
+    changed = False
+
+    async def on_change():
+        nonlocal changed
+        changed = True
+
+    server._subscription_bus.publish = lambda event: on_change()
+    dev = FakeDevice()
+    await registry.register(dev)
+    assert changed is True

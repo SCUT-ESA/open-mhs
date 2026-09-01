@@ -3,9 +3,10 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 import math
 from collections.abc import Callable
-from typing import Any, cast
+from typing import Any, ClassVar, cast
 
 try:
     import pyvisa
@@ -21,6 +22,8 @@ from openmhs.core.device import (
     DeviceState,
 )
 from openmhs.core.driver import Driver, DriverConfig, register_driver
+
+logger = logging.getLogger(__name__)
 
 _WAVEFORMS = {
     "sine": "SINe",
@@ -145,18 +148,25 @@ class WaveformGeneratorDevice(BaseDevice):
             fields = [field.strip() for field in identity.split(",")]
             if (
                 len(fields) < 2
-                or "UNI-T" not in fields[0].upper()
-                or fields[1].upper() != "UTG2062X"
+                or " ".join(fields[0].split()).casefold() not in {"uni-t", "uni-t technologies"}
+                or " ".join(fields[1].split()).casefold() != "utg2062x"
             ):
                 raise RuntimeError(f"Unsupported waveform generator identity: {identity.strip()}")
             self._set_state(DeviceState.ONLINE)
             return True
         except asyncio.CancelledError:
-            await self._session.close()
+            try:
+                await self._session.close()
+            except BaseException:
+                logger.exception("Failed to clean up cancelled waveform-generator connect")
             self._set_state(DeviceState.ERROR)
             raise
-        except Exception:  # noqa: BLE001
-            await self._session.close()
+        except Exception as primary:  # noqa: BLE001
+            try:
+                await self._session.close()
+            except BaseException:
+                logger.exception("Failed to clean up failed waveform-generator connect")
+                logger.error("Connect failure was: %s", primary)
             self._set_state(DeviceState.ERROR)
             return False
 
@@ -215,7 +225,7 @@ class WaveformGeneratorDriver(Driver):
     """Driver for UNI-T UTG2062X waveform generators."""
 
     DRIVER_NAME = "waveform_generator"
-    SUPPORTED_DEVICES: list[str] = ["waveform_generator"]  # noqa: RUF012
+    SUPPORTED_DEVICES: ClassVar[list[str]] = ["waveform_generator"]
 
     def __init__(self, config: DriverConfig):
         super().__init__(config)

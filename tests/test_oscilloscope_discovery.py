@@ -57,9 +57,7 @@ class OscilloscopeDiscoveryTests(unittest.IsolatedAsyncioTestCase):
         resource = "USB0::SCOPE::INSTR"
         resource_manager = self.make_resource_manager([resource])
         instrument = MagicMock()
-        instrument.query.return_value = (
-            "UNI-T Technologies,UPO6102N,SN123,1.0"
-        )
+        instrument.query.return_value = "UNI-T Technologies,UPO6102N,SN123,1.0"
         resource_manager.open_resource.return_value = instrument
 
         drivers = []
@@ -85,7 +83,7 @@ class OscilloscopeDiscoveryTests(unittest.IsolatedAsyncioTestCase):
         self.assertNotIn("_", first.added[0].device_id)
         self.assertEqual(len(drivers), 1)
         self.assertEqual(drivers[0].connect_count, 1)
-        self.assertEqual(instrument.close.call_count, 1)
+        self.assertEqual(instrument.close.call_count, 2)
         self.assertEqual(resource_manager.close.call_count, 2)
 
         await manager.close()

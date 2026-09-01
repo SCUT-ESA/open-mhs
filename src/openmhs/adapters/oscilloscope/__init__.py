@@ -6,8 +6,10 @@ Supports UNI-T UPO6102N devices.
 from __future__ import annotations
 
 import asyncio
+import logging
+import math
 from collections.abc import Callable
-from typing import Any, cast
+from typing import Any, ClassVar, cast
 
 try:  # Optional dependency; importing the package must remain lightweight.
     import pyvisa
@@ -23,6 +25,27 @@ from openmhs.core.device import (
     DeviceState,
 )
 from openmhs.core.driver import Driver, DriverConfig, register_driver
+
+logger = logging.getLogger(__name__)
+
+
+def _is_supported_identity(identity: str) -> bool:
+    fields = [field.strip() for field in identity.split(",")]
+    return (
+        len(fields) >= 2
+        and " ".join(fields[0].split()).casefold() in {"uni-t", "uni-t technologies"}
+        and " ".join(fields[1].split()).casefold() == "upo6102n"
+    )
+
+
+def _finite_measurement(response: str) -> float:
+    try:
+        value = float(response)
+    except (TypeError, ValueError, OverflowError) as exc:
+        raise CapabilityError("Instrument returned a non-numeric measurement") from exc
+    if not math.isfinite(value):
+        raise CapabilityError("Instrument returned a non-finite measurement")
+    return value
 
 
 def _channel(params: dict[str, Any]) -> int:
@@ -46,7 +69,12 @@ def _channel(params: dict[str, Any]) -> int:
 class OscilloscopeDevice(BaseDevice):
     """An oscilloscope backed by a serialized VISA session."""
 
-    def __init__(self, device_id: str, visa_resource: str, resource_manager_factory: Callable[[], Any] | None = None):
+    def __init__(
+        self,
+        device_id: str,
+        visa_resource: str,
+        resource_manager_factory: Callable[[], Any] | None = None,
+    ):
         metadata = DeviceMetadata(
             device_id=device_id,
             device_type="oscilloscope",
@@ -83,14 +111,30 @@ class OscilloscopeDevice(BaseDevice):
                     },
                 ),
                 DeviceCapability(
-                    "measure_vpp", "Measure peak-to-peak voltage",
-                    {"channel": {"type": "integer", "minimum": 1, "maximum": 2,
-                                 "description": "Channel number"}}, True,
+                    "measure_vpp",
+                    "Measure peak-to-peak voltage",
+                    {
+                        "channel": {
+                            "type": "integer",
+                            "minimum": 1,
+                            "maximum": 2,
+                            "description": "Channel number",
+                        }
+                    },
+                    True,
                 ),
                 DeviceCapability(
-                    "measure_frequency", "Measure frequency",
-                    {"channel": {"type": "integer", "minimum": 1, "maximum": 2,
-                                 "description": "Channel number"}}, True,
+                    "measure_frequency",
+                    "Measure frequency",
+                    {
+                        "channel": {
+                            "type": "integer",
+                            "minimum": 1,
+                            "maximum": 2,
+                            "description": "Channel number",
+                        }
+                    },
+                    True,
                 ),
             ],
             tags=["oscilloscope", "visa"],
@@ -99,7 +143,9 @@ class OscilloscopeDevice(BaseDevice):
             connection_info={"visa_resource": visa_resource},
         )
         super().__init__(metadata)
-        factory = resource_manager_factory or (pyvisa.ResourceManager if pyvisa is not None else None)
+        factory = resource_manager_factory or (
+            pyvisa.ResourceManager if pyvisa is not None else None
+        )
         self._session = VisaSession(visa_resource, factory)
 
     async def connect(self) -> bool:
@@ -109,16 +155,23 @@ class OscilloscopeDevice(BaseDevice):
         try:
             await self._session.open()
             identity = await self._session.query("*IDN?")
-            if not identity or not identity.strip():
-                raise RuntimeError("Oscilloscope returned an empty identity")
+            if not _is_supported_identity(identity):
+                raise RuntimeError(f"Unsupported oscilloscope identity: {identity.strip()}")
             self._set_state(DeviceState.ONLINE)
             return True
         except asyncio.CancelledError:
-            await self._session.close()
+            try:
+                await self._session.close()
+            except BaseException:
+                logger.exception("Failed to clean up cancelled oscilloscope connect")
             self._set_state(DeviceState.ERROR)
             raise
-        except Exception:  # noqa: BLE001
-            await self._session.close()
+        except Exception as primary:  # noqa: BLE001
+            try:
+                await self._session.close()
+            except BaseException:
+                logger.exception("Failed to clean up failed oscilloscope connect")
+                logger.error("Connect failure was: %s", primary)
             self._set_state(DeviceState.ERROR)
             return False
 
@@ -138,11 +191,11 @@ class OscilloscopeDevice(BaseDevice):
         if capability == "measure_vpp":
             channel = _channel(params)
             response = await self._session.query(f":MEASure:VPP? CHANnel{channel}")
-            return {"channel": channel, "value": float(response), "unit": "V"}
+            return {"channel": channel, "value": _finite_measurement(response), "unit": "V"}
         if capability == "measure_frequency":
             channel = _channel(params)
             response = await self._session.query(f":MEASure:FREQuency? CHANnel{channel}")
-            return {"channel": channel, "value": float(response), "unit": "Hz"}
+            return {"channel": channel, "value": _finite_measurement(response), "unit": "Hz"}
         return {"value": None, "error": f"Unknown capability: {capability}"}
 
     async def _do_write(self, capability: str, **params: Any) -> dict[str, Any]:
@@ -174,7 +227,7 @@ class OscilloscopeDriver(Driver):
     """Driver for oscilloscope devices."""
 
     DRIVER_NAME = "oscilloscope"
-    SUPPORTED_DEVICES: list[str] = ["oscilloscope"]  # noqa: RUF012
+    SUPPORTED_DEVICES: ClassVar[list[str]] = ["oscilloscope"]
 
     def __init__(self, config: DriverConfig):
         super().__init__(config)
@@ -189,7 +242,8 @@ class OscilloscopeDriver(Driver):
             device_id = self.config.connection_params.get("device_id", "oscilloscope_001")
             if self._device is None:
                 self._device = OscilloscopeDevice(
-                    device_id, self._visa_resource,
+                    device_id,
+                    self._visa_resource,
                     self.config.connection_params.get("resource_manager_factory"),
                 )
             self._connected = await cast(OscilloscopeDevice, self._device).connect()

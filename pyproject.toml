@@ -22,6 +22,7 @@ classifiers = [
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
     "Topic :: Scientific/Engineering",
     "Topic :: Software Development :: Libraries :: Python Modules",
 ]
@@ -52,8 +53,7 @@ dev = [
     "black>=23.0",
     "ruff>=0.1",
     "mypy>=1.0",
-    "mkdocs>=1.5",
-    "mkdocs-material>=9.0",
+    "build>=1.0",
 ]
 
 [project.scripts]
@@ -71,11 +71,32 @@ packages = ["src/openmhs"]
 
 [tool.black]
 line-length = 100
-target-version = ['py39']
+target-version = ['py310']
 
 [tool.ruff]
 line-length = 100
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
+ignore = ["B008", "E501"]
 
 [tool.mypy]
-python_version = "3.9"
+python_version = "3.10"
 strict = true
+
+[[tool.mypy.overrides]]
+module = [
+    "paho.*",
+    "smbus2.*",
+    "gpiozero.*",
+    "cv2.*",
+    "PIL.*",
+    "serial.*",
+    "pyvisa.*",
+]
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = "tests.*"
+ignore_errors = true
